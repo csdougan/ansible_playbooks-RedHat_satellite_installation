@@ -1,0 +1,34 @@
+---
+- hosts: satellite_server:&psip-dev
+  gather_facts: false
+  become: false
+  vars:
+    - sat_user: admin
+      sat_pass: abc123
+      server_url: https://myserver.abc123.co.uk
+      sat_org: MyOrg
+  tasks:
+    - name: Set Satellite Org
+      foreman_organization:
+        username: "{{ sat_user }}"
+        password: "{{ sat_pass }}"
+        server_url: "{{ server_url }}"
+        name: "{{ sat_org }}"
+        state: present
+
+    - name: Remove Default org
+        foreman_organization:
+          username: "{{ sat_user }}"
+          password: "{{ sat_pass }}"
+          server_url: "{{ server_url }}"
+          name: "Default Organization"
+          state: absent
+- name: "Create CI Location"
+  foreman_location:
+    username: "admin"
+    password: "changeme"
+    server_url: "https://foreman.example.com"
+    name: "My Cool New Location"
+    organizations:
+      - "Default Organization"
+    state: present

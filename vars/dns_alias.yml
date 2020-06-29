@@ -1,0 +1,12 @@
+---
+  dns_aliases:
+    - { 
+        alias: satellite-server.somehost.co.uk, 
+        ip: '1.2.3.4',
+        hostnames: ['somehost.uk']
+      }
+    - { 
+        alias: satellite-server-dev.somehost.co.uk, 
+        ip: '1.2.3.4',
+        hostnames: ['somehost.uk']
+      }

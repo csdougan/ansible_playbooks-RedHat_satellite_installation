@@ -1,0 +1,23 @@
+---
+# - usergroups: 
+#   - root
+# - system_users:
+#   - { name: "root", group: "root", additional_groups: "group2, group3", create_home: "yes"  }
+# - packages_to_install:
+#   - package1
+#   - package2 
+ - volume_groups:
+   - { name: "satellitevg", pvs: "/dev/sdb" }
+ - logical_volumes:
+   - { name: "cachepulplv", size: "30G",  vg: "satellitevg", mount: "/var/cache/pulp",        fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "libpulplv",   size: "400G", vg: "satellitevg", mount: "/var/lib/pulp",          fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "mongolv",     size: "10G",  vg: "satellitevg", mount: "/var/lib/mongodb",       fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "qpiddlv",     size: "1G",   vg: "satellitevg", mount: "/var/lib/qpidd",         fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "pgsqllv",     size: "10G",  vg: "satellitevg", mount: "/var/lib/pgsql",         fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "squidlv",     size: "10G",  vg: "satellitevg", mount: "/var/spool/squid",       fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "puppetlv",    size: "1G",   vg: "satellitevg", mount: "/opt/puppetlabs",        fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "httploglv",   size: "1G",   vg: "satellitevg", mount: "/var/log/httpd",         fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "fmproxylv",   size: "1G",   vg: "satellitevg", mount: "/var/lib/foreman-proxy", fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "optrhlv",     size: "2G",   vg: "satellitevg", mount: "/opt/rh",                fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "foremanlv",   size: "2G",   vg: "satellitevg", mount: "/opt/theforeman",        fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "workspacelv", size: "20G",  vg: "satellitevg", mount: "/workspace",             fstype: "xfs", owner: "root", group: "root", perms: "0755"  }

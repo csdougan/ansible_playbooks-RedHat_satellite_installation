@@ -1,0 +1,23 @@
+---
+ - hosts: "{{ host_selection|default('all') }}:&rhs_primary_mongo_db"
+   gather_facts: true
+   become: true
+   vars_files: "{{ playbook_dir }}/vars//mongo_os_config.yml"
+   pre_tasks:
+    - rhsm_repository:
+        name: MyOrg_Fedora_EPEL_Fedora_EPEL_7
+        state: enabled
+   roles:
+    - role: cdougan-os_setup
+      when: external_db_install|default(False) == True
+
+   post_tasks:
+    - rhsm_repository:
+        name: MyOrg_Fedora_EPEL_Fedora_EPEL_7
+        state: disabled
+
+    - name: Install Pip Modules from SRC
+      pip:
+        name: "git+{{ item.url }}#egg={{ item.name }}"
+      with_items: "{{ pip_src_installs }}"
+      when: external_db_install|default(False) == True

@@ -1,0 +1,21 @@
+---
+ - hosts: "{{ host_selection|default('none') }}:&satellite" 
+   gather_facts: false
+   become: true
+   vars:
+     content_view: RHEL6_Rolling
+     organization: MyOrg 
+     lifecycles:
+       - "something here"
+
+   tasks:
+     - name: Debug
+       debug:
+         var: lifecycles
+
+     - name: "Call playbook for promoting content view to {{ item }}"
+       include: promote_cv.yml
+       vars:
+         lifecycle: "{{ item }}"
+       with_items: "{{ lifecycles }}"
+

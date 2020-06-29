@@ -1,0 +1,15 @@
+---
+ - hosts: "{{ host_selection|default('all') }}:&satellite-server"
+   gather_facts: true
+   become: true
+   vars_files: "{{ playbook_dir }}/vars/satellite_os_config.yml"
+   roles:
+   - { role: cdougan-os_setup }
+   post_tasks:
+      - name: Update selinux-policy
+        yum:
+           name: selinux-policy
+           state: latest
+
+
+

@@ -1,0 +1,82 @@
+---
+ - hosts: "{{ host_selection|default('none') }}:&rhs_primary_mongo_db"
+   gather_facts: true
+   become: true
+   vars:
+     mongo_conf: /etc/opt/rh/rh-mongodb34/mongod.conf
+   tasks:
+     - block:
+       - name: Configure mongo service script
+         systemd:
+           state: started
+           enabled: yes
+           name: rh-mongodb34-mongod
+         register: mongo_systemd
+
+       - name: Wait for mongo to start up
+         wait_for:
+           host: localhost
+           port: "{{ mongo_port|default('27017') }}"
+         when: mongo_systemd is changed
+
+       - name: Check if authorization has been enabled
+         shell: 'grep "authorization: enabled" {{ mongo_conf }}'
+         changed_when: false
+         failed_when: false
+         register: auth_enabled
+
+       - name: set up admin user
+         mongodb_user:
+           database: admin
+           name: admin
+           password: "{{ mongo_admin_pwd|default('password123') }}"
+           roles: root
+         when: auth_enabled.rc != 0
+
+       - name: set security settings
+         lineinfile:
+           regexp: '^.*security:.*'
+           line: 'security:'
+           state: present
+           path: "{{ mongo_conf }}"
+         notify:
+             - restart_mongo_service
+
+       - name: set auth settings
+         lineinfile:
+           regexp: '^.*authorization:.*'
+           line: '  authorization: enabled'
+           state: present
+           path: "{{ mongo_conf }}"
+           insertafter: 'security:'
+         notify:
+           - restart_mongo_service
+
+       - name: set bindip settings
+         lineinfile:
+           regexp: '^.*bindIp:.*'
+           line: '  bindIp: 127.0.0.1,{{ ansible_default_ipv4.address }},::1'
+           state: present
+           path: "{{ mongo_conf }}"
+         notify:
+           - restart_mongo_service
+
+       - name: Ensure service is restarted if it needs to be
+         meta: flush_handlers
+
+       - name: set up mongodb pulp db & user
+         mongodb_user:
+           database: "{{ pulp_db_name | default('pulp') }}"
+           name: "{{ pulp_db_user | default('pulp') }}"
+           password: "{{ pulp_db_password | default('pulp') }}"
+           login_user: admin
+           login_password: "{{ mongo_admin_pwd|default('password123')}}"
+           roles: dbOwner,readWrite
+           state: present
+       when: external_db_install|default(False) == True
+   handlers:
+     - name:  restart_mongo_service
+       systemd:
+         name: rh-mongodb34-mongod
+         daemon_reload: yes
+         state: restarted

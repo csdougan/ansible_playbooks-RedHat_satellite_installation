@@ -1,0 +1,44 @@
+---
+ - hosts: "{{ host_selection|default('all') }}:&satellite-server"
+   gather_facts: true
+   become: true
+   vars:
+     satellite_version: "6.4.0"
+     sat_major_ver: "{{ satellite_version.split('.')[0] }}"
+     sat_minor_ver: "{{ satellite_version.split('.')[1] }}"
+     sat_ver_postfix: "{% if satellite_version.split('.')|length > 2 -%}.z{%- endif %}"
+     ansible_release_ver: 2.8
+     update_ver: "{{ sat_major_ver }}.{{ sat_minor_ver }}{{ sat_ver_postfix }}"
+   tasks:
+   - name: Enable repositories
+     rhsm_repository:
+       name:
+         - "rhel-{{ ansible_distribution_major_version }}-server-rpms"
+         - "rhel-{{ ansible_distribution_major_version }}-server-satellite-{{ sat_major_ver }}.{{ sat_minor_ver }}-rpms"
+         - "rhel-{{ ansible_distribution_major_version }}-server-satellite-maintenance-{{ sat_major_ver }}-rpms"
+         - "rhel-server-rhscl-{{ ansible_distribution_major_version }}-rpms"
+         - "rhel-{{ ansible_distribution_major_version }}-server-ansible-{{ ansible_release_ver }}-rpms"
+
+   - name: Regen Yum
+     shell: yum clean all; yum makecache fast
+
+   - name: Update to latest foreman_maintain package
+     yum:
+       name: 'rubygem-foreman_maintain'
+       state: latest
+
+   - name: Mount tmp as executable
+     shell: mount -o remount,exec /tmp
+
+   - name: Run Foreman-maintain upgrade check
+     shell: "foreman-maintain upgrade check --target-version {{ update_ver }} -y --whitelist available-space,repositories-validate,disk-performance"
+     environment:
+       TERM: vt100
+
+   - name: Run Foreman-maintain upgrade command
+     shell: "foreman-maintain upgrade run --target-version {{ update_ver }} -y --whitelist available-space,repositories-validate,disk-performance,repositories-setup"
+     environment:
+       TERM: vt100
+
+   - name: reboot server to apply changes
+     reboot:

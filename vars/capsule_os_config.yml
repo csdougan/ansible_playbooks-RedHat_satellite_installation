@@ -1,0 +1,17 @@
+---
+# - usergroups: 
+#   - root
+# - system_users:
+#   - { name: "root", group: "root", additional_groups: "group2, group3", create_home: "yes"  }
+# - packages_to_install:
+#   - package1
+#   - package2 
+ - volume_groups:
+   - { name: "capsulevg", pvs: "/dev/sdb" }
+ - logical_volumes:
+   - { name: "cachepulplv", size: "20G",  vg: "capsulevg", mount: "/var/cache/pulp",        fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "libpulplv",   size: "120G", vg: "capsulevg", mount: "/var/lib/pulp",          fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "mongolv",     size: "50G",  vg: "capsulevg", mount: "/var/lib/mongodb",       fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "puppetlv",    size: "400M",   vg: "capsulevg", mount: "/opt/puppetlabs",        fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "optrhlv",     size: "500M",   vg: "capsulevg", mount: "/opt/rh",                fstype: "xfs", owner: "root", group: "root", perms: "0755"  }
+   - { name: "foremanlv",   size: "100M",   vg: "capsulevg", mount: "/opt/theforeman",        fstype: "xfs", owner: "root", group: "root", perms: "0755"  }

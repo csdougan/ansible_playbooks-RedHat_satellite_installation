@@ -1,0 +1,9 @@
+---
+# content_view, organization and lifecycle_env variables need to be set
+ - name: Get Latest Content View ID
+   shell: "hammer content-view info --name {{ content_view }} --organization={{ organization }}|awk 'BEGIN {x=0} {if ($1 ~ \"Versions\") x++; if (x > 0) print $0}'|grep ID | awk '{print $NF}'|cat|sort|tail -n1"
+   register: cv_id
+
+ - name: "Promote content view {{ content_view }} (id : {{ cv_id.stdout }}) to lifecycle {{ lifecycle }}"
+   shell: 'hammer content-view version promote --id "{{ cv_id.stdout }}" --to-lifecycle-environment "{{ lifecycle }}" --organization="{{ organization }}"'
+

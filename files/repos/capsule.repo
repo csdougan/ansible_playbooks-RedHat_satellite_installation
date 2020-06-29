@@ -1,0 +1,6 @@
+[SatCapsule_ISO]
+name=Red Hat Satellite (Capsule) for Red Hat Enterprise Linux 7
+metadata_expire=-1
+gpgcheck=0
+cost=500
+baseurl=file:///mount/capsule_iso

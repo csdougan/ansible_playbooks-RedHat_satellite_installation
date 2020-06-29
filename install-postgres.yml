@@ -1,0 +1,80 @@
+---
+ - hosts: "{{ host_selection|default('all') }}:&rhs_primary_postgres_db"
+   gather_facts: false
+   become: true
+   vars:
+     subset_group: "{{ host_selection|default('all') }}"
+   tasks:
+     - block:
+       - name: Init Postgresql
+         shell: /usr/bin/postgresql-setup initdb
+         args:
+           creates: /var/lib/pgsql/data/PG_VERSION
+
+       - name: Configure postgresql service script
+         systemd:
+           state: started
+           enabled: yes
+           name: postgresql
+         register: postgres_systemd
+
+       - name: Wait for postgreSQL to start up
+         wait_for:
+           host: localhost
+           port: 5432
+         when: postgres_systemd is changed
+
+       - name: Configure hba conf
+         lineinfile:
+            line: "listen_addresses = '*'"
+            state: present
+            regexp: "^.*listen_addresses"
+            path: /var/lib/pgsql/data/postgresql.conf
+         notify:
+           - restart_postgres_service
+
+       - set_fact:
+           satellite_server: "{% for host in groups['satellite-server'] %}{% if host in groups[subset_group] %}{{ host }}{% endif %}{% endfor %}"
+         changed_when: false
+
+       - debug:
+           msg: "{{ satellite_server }}"
+
+       - name: Get IP Address of Satellite Server
+         setup:
+         delegate_to: "{{ satellite_server }}"
+         delegate_facts: true
+         changed_when: false
+
+       - name: Configure pg_hba.conf
+         lineinfile:
+            line: "host   all   all   {{ hostvars[satellite_server].ansible_default_ipv4.address }}/24   md5"
+            state: present
+            path: /var/lib/pgsql/data/pg_hba.conf
+         notify:
+           - restart_postgres_service
+
+       - name: Set up users
+         postgresql_user:
+           name: "{{ item.user }}"
+           password: "{{ item.password }}"
+           expires: infinity
+         with_items:
+          - { user: 'foreman', password: "{{ foreman_db_password|default('foreman') }}" }
+          - { user: 'candlepin', password: "{{ candlepin_db_password|default('candlepin') }}" }
+         become_user: postgres
+
+       - name: Set up DBs
+         postgresql_db:
+           name: "{{ item }}"
+           owner: "{{ item }}"
+         with_items:
+          - foreman
+          - candlepin
+         become_user: postgres
+       when: external_db_install|default(False) == True
+   handlers:
+     - name:  restart_postgres_service
+       systemd:
+          name: postgresql
+          state: restarted

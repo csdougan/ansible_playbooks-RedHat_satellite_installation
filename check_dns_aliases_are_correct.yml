@@ -1,0 +1,20 @@
+---
+ - hosts: localhost
+   gather_facts: false
+   vars_files:
+   - "{{ playbook_dir }}/../vars/dns_alias.yml"
+   tasks:
+   - name: Check that dns aliases resolve and the ip matches what we expect
+     assert:
+      that: "item.ip == ((lookup('pipe','getent hosts ' + item.alias|quote + '|cat')).split(' ')|first)"
+     with_items: "{{ dns_aliases }}"
+
+   - name: Check that dns aliases resolves the same ip as the hostname we think it points to
+     assert:
+      that: "((lookup('pipe','getent hosts ' + item.hostnames[0]|quote + '|cat')).split(' ')|first) == ((lookup('pipe','getent hosts ' + item.alias|quote + '|cat')).split(' ')|first)"
+     with_items: "{{ dns_aliases }}"
+
+
+
+
+

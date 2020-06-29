@@ -1,0 +1,13 @@
+---
+ - hosts: "{{ host_selection|default('none') }}:&satellite"
+   gather_facts: false
+   become: true
+   vars:
+     content_view: RHEL6_Rolling
+     organization: MyOrg 
+
+   tasks:
+     - name: Publish Content View
+       shell: "hammer content-view publish --name {{ content_view }} --organization={{ organization }}"
+
+

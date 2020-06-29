@@ -1,0 +1,166 @@
+---
+ - hosts: capsule
+   gather_facts: true
+   become: true
+   vars_files: "{{ playbook_dir }}/vars/capsule_os_config.yml"
+   vars:
+     sat_org: some_org
+     satellite_server: 10.11.12.13
+     capsule_version: 6.6
+     capsule_arch: x86_64
+     capsule_rhel_ver: 7
+   environment:
+     TERM: xterm-256color
+   tasks:
+   - name: Set up OS
+     import_role:
+       name: cdougan-os_setup
+
+   - name: Get installed package list
+     package_facts:
+       manager: rpm
+
+   - name: check correct katello package is installed
+     assert:
+        that: '"katello-ca-consumer-{{ satellite_server }}" in ansible_facts["packages"]'
+
+   - block:
+     - shell: subscription-manager refresh
+       async: 1000
+       poll: 0
+       changed_when: false
+       ignore_errors: true
+       register: sub_refresh
+
+     - name: Check status of sub refresh
+       async_status:
+         jid: "{{ sub_refresh.ansible_job_id }}"
+       register: sub_refresh_async
+       until: sub_refresh_async.finished
+       retries: 30
+       delay: 5
+       ignore_errors: true
+     when: '"katello-ca-consumer-{{ satellite_server }}" in ansible_facts["packages"]'
+
+   - block:
+     - name: clean subscription manager if katello package is not correct
+       shell: subscription-manager clean
+       ignore_errors: true
+
+     - name: remove any katello packages
+       yum:
+         name: "katello-ca-consumer*"
+         state: absent
+
+     - name: Install correct katello package
+       yum:
+         name: "http://{{ satellite_server }}/pub/katello-ca-consumer-latest.noarch.rpm"
+         state: present
+     when: '"katello-ca-consumer-{{ satellite_server }}" not in ansible_facts["packages"]'
+
+   - name: Manage Satellite Registration
+     redhat_subscription:
+       state: present
+       activationkey: "AutoAttach,RHS_Capsule"
+       org_id: "{{ sat_org }}"
+       auto_attach: true
+       force_register: yes
+
+   - name: check subscription-manager status
+     shell: "subscription-manager status|grep ^Overall|grep -i current"
+     register: sub_status
+     changed_when: false
+
+   - name: Ensure all repos are enabled via RHSM
+     rhsm_repository:
+       name: ["rhel-{{ ansible_distribution_major_version }}-server-satellite-capsule-{{ capsule_version }}-rpms","rhel-{{ ansible_distribution_major_version }}-server-satellite-maintenance-6-rpms","rhel-{{ ansible_distribution_major_version }}-server-rpms","rhel-server-rhscl-{{ ansible_distribution_major_version }}-rpms","rhel-{{ ansible_distribution_major_version }}-server-ansible-2.8-rpms"]
+       purge: true
+     register: repocheck
+
+     #     - name: Check if rpm is already present
+     #  shell: rpm -q satellite-capsule
+     #    register: check_for_rpm
+     #  changed_when: false
+     #  failed_when: false
+
+   - name: Check for EPEL packages
+     shell: yum list installed | grep EPEL | awk '{print $1}' | grep ^[a-z]
+     register: epel_check
+    
+   - name: Remove EPEL packages
+     yum:
+       name: "{{ epel_check.stdout_lines }}"
+       state: absent
+     when: epel_check.stdout_lines | length > 0 
+
+   - name: Check for Satellite packages
+     shell: yum list installed | grep satellite | awk '{print $1}' | grep ^[a-z]
+     register: satellite_check
+    
+   - name: Remove satellite packages
+     yum:
+       name: "{{ satellite_check.stdout_lines }}"
+       state: absent
+     when: satellite_check.stdout_lines | length > 0 
+
+   - name: Update all packages pre-install of capsule
+     yum:
+       name: '*'
+       state: latest
+
+### Mount /tmp and /home with exec perms before running this
+
+   - name: Install Satellite installer
+     yum:
+       name: satellite-capsule
+       state: present
+
+   - name: Check if certs file exists
+     stat:
+       path: "/root/{{ ansible_fqdn }}-certs.tar"
+     register: certs_exist_check
+
+   - debug:
+       var: certs_exist_check
+
+   - block:
+     - name: Generate certs file
+       shell: capsule-certs-generate --foreman-proxy-fqdn "{{ inventory_hostname }}" --certs-tar /root/"{{ inventory_hostname }}"-certs.tar |tail -n11|sed 's/\\//g' |tr -d '[[:cntrl:]]'|sed 's/ \+/ /g'
+
+       delegate_to: "{{ satellite_server }}"
+       register: cert_gen_output
+
+     - name: check the output
+       debug:
+         var: cert_gen_output.stdout
+
+     - name: check that the certs generated ok
+       assert:
+         that: "'satellite-installer' in cert_gen_output.stdout"
+
+     - name: get the file
+       fetch:
+         src:  "/root/{{ ansible_fqdn }}-certs.{{ item }}"
+         dest: /tmp
+       delegate_to: "{{ satellite_server }}"
+       with_items:
+       - tar
+
+     - name: Put the file
+       copy:
+         src: "/tmp/{{ ansible_fqdn }}/root/{{ ansible_fqdn }}-certs.{{ item }}"
+         dest: "/root/{{ ansible_fqdn }}-certs.tar"
+       with_items:
+       - tar
+
+     - name: Run installer
+       shell: "{{ cert_gen_output.stdout }}"
+       register: capture_all_installer
+       ignore_errors: true
+
+     - debug:
+         var: capture_all_installer
+       when: certs_exist_check.stat.exists == False
+     
+       
+

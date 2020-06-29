@@ -1,0 +1,6 @@
+[RHEL76]
+name=Red Hat Enterprise Linux 7.6
+metadata_expire=-1
+gpgcheck=0
+cost=500
+baseurl=file:///mount/rhel_iso

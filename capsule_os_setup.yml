@@ -1,0 +1,10 @@
+---
+ - hosts: "{{ host_selection|default('all') }}:&capsule-server"
+   gather_facts: true
+   become: true
+   vars_files: "{{ playbook_dir }}/vars/capsule_os_config.yml"
+   roles:
+   - { role: cdougan-os_setup }
+
+
+

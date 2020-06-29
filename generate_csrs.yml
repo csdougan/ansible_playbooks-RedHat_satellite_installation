@@ -1,0 +1,54 @@
+---
+ - hosts: localhost
+   gather_facts: false
+   vars_files:
+      - "{{ playbook_dir }}/../vars/dns_alias.yml"
+      - "{{ playbook_dir }}/../vars/csrs.yml"
+      
+   tasks:
+   - name: Create holding dir for CSRs
+     file:
+       state: directory
+       path: "{{ csr_holding_dir }}"
+       
+   - name: Install PyOpenSSL to allow certs to be generated
+     yum:
+       name: pyOpenSSL
+       state: latest
+     become: true
+     when: using_awx|default('false') == true
+
+   - name: Place pre-generated private key for signing CSRs
+     copy:
+       src: "{{ csr_source_private_key }}"
+       dest: "{{ csr_private_key_path }}"
+       owner: root
+       group: root
+       mode: 0600
+     become: true
+     when: generate_new_private_key == false
+
+   - name: Generate private key for signing CSRs
+     openssl_privatekey:
+       path: "{{ csr_private_key_path }}"
+     become: true
+     when: generate_new_private_key != false
+
+   - name: Generate CSRs
+     command: "openssl req -new -key {{ csr_private_key_path }} -out {{ csr_holding_dir }}/{{ item.alias }}.csr -subj \"/C={{ csr.country }}/ST={{ csr.state }}/L={{ csr.locality }}/O={{ csr.org }}/OU={{ csr.ou }}/CN={{ item.alias }}/emailAddress={{ csr.email }}\""
+     become: true
+     with_items: "{{ dns_aliases }}"
+     when: using_awx|default(false) == false
+      
+   - name: Generate OpenSSL CSRs for dns aliases
+     openssl_csr:
+       path: "/tmp/CSRs/{{ item.alias }}.csr"
+       privatekey_path: /etc/ssl/certs/csr_request_key.pem
+       common_name: "{{ item.alias }}"
+       country_name: UK
+       organization_name: MyOrg
+       state_or_province_name: Berkshire
+       locality_name: Bracknell
+     become: true
+     with_items: "{{ dns_aliases }}"
+     when: using_awx|default(false) == true

@@ -1,0 +1,4 @@
+---
+- name: cdougan-os_setup
+  src: git+https://somehost/scm/aan/cdougan-os_setup.git
+  version: origin/master

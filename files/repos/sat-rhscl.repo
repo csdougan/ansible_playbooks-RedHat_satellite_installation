@@ -1,0 +1,6 @@
+[SatRHSCL]
+name=Red Hat Satellite RHSCL for Red Hat Enterprise Linux 7
+metadata_expire=-1
+gpgcheck=0
+cost=500
+baseurl=file:///mount/satellite_iso/RHSCL

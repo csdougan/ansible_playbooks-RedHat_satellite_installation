@@ -1,0 +1,20 @@
+---
+# - usergroups: 
+#   - root
+# - system_users:
+#   - { name: "root", group: "root", additional_groups: "group2, group3", create_home: "yes"  }
+# - packages_to_install:
+#   - package1
+#   - package2
+usergroups:
+  - mongodb
+system_users:
+  - { name: "mongodb", group: "mongodb", uid: "184", create_home: "yes" }
+volume_groups:
+  - { name: "mongovg", pvs: "/dev/sdb" }
+logical_volumes:
+  - { name: "mongolv", size: "100%VG",  vg: "mongovg", mount: "/var/opt/rh/rh-mongodb34/lib/mongodb",        fstype: "xfs", owner: "mongodb", group: "root", perms: "0750"  }
+packages_to_install:
+  - ['rh-mongodb34','rh-mongodb34-syspaths','python2-pip','git2u']
+pip_src_installs:
+  - { name: 'pymongo', url: 'https://somehostname/scm/pyt/pymongo.git' }

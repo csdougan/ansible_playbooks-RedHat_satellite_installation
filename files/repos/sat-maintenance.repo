@@ -1,0 +1,8 @@
+[SatMaintenance]
+name=Red Hat Satellite Maintenance 6 for Red Hat Enterprise Linux 7
+metadata_expire=-1
+gpgcheck=0
+cost=500
+baseurl=file:///mount/satellite_iso/sat-maintenance
+
+

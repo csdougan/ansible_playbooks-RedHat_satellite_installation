@@ -1,0 +1,25 @@
+---
+# - usergroups: 
+#   - root
+# - system_users:
+#   - { name: "root", group: "root", additional_groups: "group2, group3", create_home: "yes"  }
+# - packages_to_install:
+#   - package1
+#   - package2
+ - usergroups:
+      - postgres
+ - system_users:
+      - { name: "postgres", group: "postgres", uid: "26", create_home: "yes" }
+ - volume_groups:
+   - { name: "postgresvg", pvs: "/dev/sdb" }
+ - logical_volumes:
+   - { name: "postgreslv", size: "100%VG",  vg: "postgresvg", mount: "/var/lib/pgsql",        fstype: "xfs", owner: "postgres", group: "postgres", perms: "0700"  }
+ - packages_to_install:
+     - postgresql-server
+     - python2-pip
+     - git2u
+     - gcc
+     - python-devel
+     - postgresql-devel
+ - pip_src_installs:
+     - { name: 'psycopg2', url: 'https://somehostname/scm/pyt/psycopg2.git' }

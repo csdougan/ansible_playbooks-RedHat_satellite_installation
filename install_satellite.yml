@@ -1,0 +1,128 @@
+---
+ - hosts: "{{ host_selection|default('all') }}:&satellite-server"
+   gather_facts: true
+   become: true
+   vars:
+     subset_group: "{{ host_selection|default('all') }}"
+     external_db_install: True
+     nexus_url: "http://{{ nexus_hostname }}:{{ nexus_port }}/nexus/service/local/repositories"
+     sat_iso_name: "{{ sat_nexus_artifact }}-{{ satellite_version }}-x86_64-dvd.iso"
+     rhel_iso_name: "{{ rhel_nexus_artifact }}-{{ rhel_version }}-dvd.iso"
+     rhel_iso_web_url: "{{ nexus_url }}/{{ rhel_nexus_repo }}/content/{{ rhel_nexus_group }}/{{ rhel_nexus_artifact}}/{{ rhel_version }}"
+     sat_iso_web_url: "{{ nexus_url }}/{{ sat_nexus_repo }}/content/{{ sat_nexus_group }}/{{ sat_nexus_artifact }}/{{ satellite_version }}"
+   tasks:
+   - set_fact:
+       postgres_host: "{% for host in groups['rhs_primary_postgres_db'] %}{% if host in groups[subset_group] %}{{ host }}{% endif %}{% endfor %}"
+       mongo_host: "{% for host in groups['rhs_primary_mongo_db'] %}{% if host in groups[subset_group] %}{{ host }}{% endif %}{% endfor %}"
+
+   - name: Check if rpm is already present
+     shell: rpm -q satellite-installer
+     register: check_for_rpm
+     changed_when: false
+     failed_when: false
+
+   - block:
+     - name: Copy media file over
+       copy:
+         src: "./files/repos/{{ item }}"
+         dest: "/etc/yum.repos.d/{{ item }}"
+       with_items:
+        - satellite.repo
+        - sat-maintenance.repo
+        - sat-rhscl.repo
+        - rhel-iso.repo
+
+     - name: Get ISO
+       get_url:
+         url: "{{ item.url }}/{{ item.name }}"
+         dest: "/workspace/{{ item.name }}"
+         tmp_dest: /tmp
+       with_items:
+         - { name: "{{ sat_iso_name }}", url: "{{ sat_iso_web_url }}" }
+         - { name: "{{ rhel_iso_name }}", url: "{{ rhel_iso_web_url }}" }
+
+     - name: Make mount
+       file:
+         path: "/mount/{{ item }}"
+         state: directory
+       with_items:
+         - satellite_iso
+         - rhel_iso
+
+     - name: Mount ISO
+       mount:
+         path: "/mount/{{ item.mount }}"
+         src: "/workspace/{{ item.iso }}"
+         opts: loop
+         fstype: auto
+         fstab: /tmp/fstab.dummy
+         state: mounted
+       with_items:
+       - { mount: 'satellite_iso', iso: "{{ sat_iso_name }}" }
+       - { mount: 'rhel_iso', iso: "{{ rhel_iso_name }}" }
+
+     - name: check if installer has been run
+       stat:
+         path: /var/log/install_satellite_packages.log
+       register: installer_log
+
+     - name: Import GPG key for RHEL
+       shell: rpm --import /mount/rhel_iso/RPM-GPG-KEY-redhat-release
+
+     - name: remove any EPEL packages
+       shell: yum list installed |grep -i epel|awk '{print $1}'|while read line; do yum remove -y $line; done
+
+     - name: remove any satellite tools packages
+       shell: yum list installed |grep -i rhel-7-server-satellite-tools |awk '{print $1}'|while read line; do yum remove -y $line; done
+
+     - name: remove puppet if capsule not installed 
+       shell: yum remove -y puppet; rm -rf /var/lib/puppet; rm -rf /etc/puppet
+
+     - name: sort out subs
+       shell: subscription-manager clean
+
+
+     - name: Remove old satellite packages
+       shell: yum list installed |grep -i katello |awk '{print $1}'|while read line; do yum remove -y $line; done
+
+     - name: Regen Yum
+       shell: yum clean all; yum makecache fast
+
+     - name: Update to lastest packages
+       yum:
+         name: '*'
+         state: latest
+
+     - name: Install Packages
+       shell: /mount/satellite_iso/install_packages > /var/log/install_satellite_packages.log 2>&1
+   
+     - name: Mount tmp as executable
+       shell: mount -o remount,exec /tmp
+
+#     - name: Set disconnected mode
+#       shell: hammer settings set --name content_disconnected --value true
+#       when: installer_log.stat.exists == False
+
+     - name: Install Satellite with internal dbs
+       shell: "satellite-installer --scenario satellite --foreman-admin-username {{ sat_user }} --foreman-admin-password {{ sat_pwd }}"
+       environment:
+         TERM: vt100
+       when: external_db_install != True
+
+     - name: Install Satellite with external dbs
+       shell: "satellite-installer --scenario satellite --foreman-admin-username {{ sat_user }} --foreman-admin-password {{ sat_pwd }} --foreman-db-host {{ postgres_host }} --foreman-db-password {{ foreman_db_password|default('foreman') }} --foreman-db-database {{ foreman_db_name|default('foreman') }} --katello-candlepin-db-host {{ postgres_host }} --katello-candlepin-db-name {{ candlepin_db_name|default('candlepin') }} --katello-candlepin-db-password {{ candlepin_db_password|default('candlepin') }} --katello-candlepin-manage-db false --katello-pulp-db-username pulp --katello-pulp-db-password {{ pulp_db_password|default('pulp') }} --katello-pulp-db-seeds {{ mongo_host }}:{{ mongo_port|default('27017') }} --katello-pulp-db-name {{ pulp_db_name|default('pulp') }} --katello-proxy-url=http://1.2.3.4 --katello-proxy-port=80"
+       environment:
+         TERM: vt100
+       when: external_db_install == True
+
+     when: check_for_rpm.rc != 0
+
+   - name: Unmount ISO
+     mount:
+       path: /mount/satellite_iso
+       src: "/workspace/{{ item }}"
+       state: unmounted
+     with_items:
+      - satellite_iso
+      - rhel_iso
+      

@@ -1,0 +1,128 @@
+---
+ - hosts: {{ host_selection|default('all') }}:&postgres_standby
+   gather_facts: false
+   become: true
+   tasks:
+   - name: Set up yum repo for postgres
+     template:
+       src: "{{ playbook_dir }}/../templates/at_dep_yum_repo.j2"
+       dest: /etc/yum.repos.d/at_dep_yum.repo
+
+   - name: Install postgres packages
+     yum:
+       name: ['postgresql96-server','postgresql96-contrib','postgresql96-libs','postgresql96','python-psycopg2']
+       state: installed
+
+ - hosts: postgres_active
+   gather_facts: false
+   tasks:
+    - set_fact:
+        postgres_active_node_ip: "{{ (lookup('pipe','getent hosts ' + groups['postgres_active']|first|quote + '|cat')).split(' ')|first }}"
+        postgres_standby_node_ip: "{{ (lookup('pipe','getent hosts ' + groups['postgres_standby']|first|quote + '|cat')).split(' ')|first }}"
+
+    - name: check if replication is set in pg_hba.conf
+      lineinfile:
+        path: "/var/lib/pgsql/{{ pg_ver }}/data/pg_hba.conf"
+        line: "host   replication   replication   {{ postgres_standby_node_ip }}/32   md5"
+        state: present
+      register: pri_hba_conf
+
+    - debug:
+        var: pri_hba_conf
+
+    - block:
+      - name: create replication user
+        postgresql_user:
+          name: "{{ pg_replication_user }}"
+          password: "{{ pg_replication_password }}"
+          role_attr_flags: LOGIN,REPLICATION
+        become_user: postgres
+        when: pri_hba_conf.changed == True     
+
+      - name: Stop Primary DB
+        systemd:
+          name: "postgresql-{{ pg_ver }}"
+          state: stopped
+
+      - name: Add replication line to pg_hba.conf
+        lineinfile:
+          path: "/var/lib/pgsql/{{ pg_ver }}/data/pg_hba.conf"
+          line: "host   replication   replication   {{ postgres_standby_node_ip }}/32   md5"
+          state: present
+        check_mode: no
+
+      - name: update settings in postgresql conf file
+        ini_file:
+          path: "/var/lib/pgsql/{{ pg_ver }}/data/postgresql.conf"
+          section: null
+          option: "{{ item.option }}"
+          value: "{{ item.value }}"
+        with_items:
+         - { option: 'hot_standby',       value: 'on' }
+         - { option: 'wal_level',         value: 'hot_standby' }
+         - { option: 'max_wal_senders',   value: '5' }
+         - { option: 'wal_keep_segments', value: '32' }
+         - { option: 'archive_mode',      value: 'on' }
+
+      - name: Stop Standby DB
+        systemd:
+          name: "postgresql-{{ pg_ver }}"
+          state: stopped
+        delegate_to: "{{ groups['postgres_standby']|first }}"
+
+      - name: Ensure data directory is empty
+        file:
+          path: "/var/lib/pgsql/{{ pg_ver }}/data"
+          state: absent
+        delegate_to: "{{ groups['postgres_standby']|first }}"
+   
+      - name: Start Primary DB
+        systemd:
+          name: "postgresql-{{ pg_ver }}"
+          state: started
+
+      - name: Create pgpass file to allow secondary to connect to primary for replication
+        lineinfile:
+          path: /var/lib/pgsql/.pgpass
+          create: yes
+          line: "{{ postgres_active_node_ip }}:{{ pg_port }}:replication:{{ pg_replication_user }}:{{ pg_replication_password }}"
+          state: present
+          mode: 0600
+          owner: postgres
+          group: postgres
+        delegate_to: "{{ groups['postgres_standby']|first }}"
+
+      - name: Copy from Primary to Secondary
+        shell: pg_basebackup -h {{ postgres_active_node_ip }} -D /var/lib/pgsql/{{ pg_ver }}/data  --no-password -U replication --xlog-method=stream
+        delegate_to: "{{ groups['postgres_standby']|first }}"
+        become_user: postgres
+      when: pri_hba_conf.changed == True     
+
+    - name: Ensure Primary DB is running
+      systemd:
+        name: "postgresql-{{ pg_ver }}"
+        state: started
+
+ - hosts: postgres_standby
+   gather_facts: false
+   tasks:
+    - set_fact:
+        postgres_active_node_ip: "{{ (lookup('pipe','getent hosts ' + groups['postgres_active']|first|quote + '|cat')).split(' ')|first }}"
+    - name: Update settings in recovery.conf file
+      ini_file:
+        path: "/var/lib/pgsql/{{ pg_ver }}/data/recovery.conf"
+        section: null
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+      with_items:
+       - { option: 'standby_mode',           value: "'on'" }
+       - { option: 'primary_conninfo',       value: "'host={{ postgres_active_node_ip }} port={{ pg_port }} user={{ pg_replication_user }} password={{ pg_replication_password }}'" }
+       - { option: 'trigger_file',           value: "'/var/lib/pgsql/{{ pg_ver }}/trigger'" }
+       - { option: 'restore_command',        value: "'cd .'" }
+      become_user: postgres
+
+    - name: Start Standby DB
+      systemd:
+        name: "postgresql-{{ pg_ver }}"
+        state: started
+
